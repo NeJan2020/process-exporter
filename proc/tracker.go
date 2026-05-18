@@ -31,6 +31,7 @@ type (
 		trackChildren bool
 		// never ignore processes, i.e. always re-check untracked processes in case comm has changed
 		alwaysRecheck bool
+		minimal       bool
 		username      map[int]string
 		debug         bool
 	}
@@ -139,13 +140,14 @@ func (tp *trackedProc) getUpdate() Update {
 }
 
 // NewTracker creates a Tracker.
-func NewTracker(namer common.MatchNamer, trackChildren bool, alwaysRecheck bool, debug bool) *Tracker {
+func NewTracker(namer common.MatchNamer, trackChildren bool, alwaysRecheck bool, minimal bool, debug bool) *Tracker {
 	return &Tracker{
 		namer:         namer,
 		tracked:       make(map[ID]*trackedProc),
 		procIds:       make(map[int]ID),
 		trackChildren: trackChildren,
 		alwaysRecheck: alwaysRecheck,
+		minimal:       minimal,
 		username:      make(map[int]string),
 		debug:         debug,
 	}
@@ -229,7 +231,13 @@ func (t *Tracker) handleProc(proc Proc, updateTime time.Time) (*IDInfo, CollectE
 		return nil, cerrs
 	}
 
-	metrics, softerrors, err := proc.GetMetrics()
+	var metrics Metrics
+	var softerrors int
+	if t.minimal {
+		metrics, softerrors, err = proc.GetMinimalMetrics()
+	} else {
+		metrics, softerrors, err = proc.GetMetrics()
+	}
 	if err != nil {
 		if t.debug {
 			log.Printf("error reading metrics for %+v: %v", procID, err)
@@ -243,12 +251,14 @@ func (t *Tracker) handleProc(proc Proc, updateTime time.Time) (*IDInfo, CollectE
 	}
 
 	var threads []Thread
-	threads, err = proc.GetThreads()
-	if err != nil {
-		if t.debug {
-			log.Printf("can't read thread metrics for %+v: %v", procID, err)
+	if !t.minimal {
+		threads, err = proc.GetThreads()
+		if err != nil {
+			if t.debug {
+				log.Printf("can't read thread metrics for %+v: %v", procID, err)
+			}
+			softerrors |= 1
 		}
-		softerrors |= 1
 	}
 	cerrs.Partial += softerrors
 

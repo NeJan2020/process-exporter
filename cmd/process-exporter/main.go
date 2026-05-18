@@ -29,14 +29,14 @@ func printManual() {
 	fmt.Print(`Usage:
   process-exporter [options] -config.path filename.yml
 
-or 
+or
 
   process-exporter [options] -procnames name1,...,nameN [-namemapping k1,v1,...,kN,vN]
 
 The recommended option is to use a config file, but for convenience and
 backwards compatibility the -procnames/-namemapping options exist as an
 alternative.
- 
+
 The -children option (default:true) makes it so that any process that otherwise
 isn't part of its own group becomes part of the first group found (if any) when
 walking the process tree upwards.  In other words, resource usage of
@@ -46,14 +46,14 @@ as a different group name.
 Command-line process selection (procnames/namemapping):
 
   Every process not in the procnames list is ignored.  Otherwise, all processes
-  found are reported on as a group based on the process name they share. 
+  found are reported on as a group based on the process name they share.
   Here 'process name' refers to the value found in the second field of
   /proc/<pid>/stat, which is truncated at 15 chars.
 
   The -namemapping option allows assigning a group name based on a combination of
-  the process name and command line.  For example, using 
+  the process name and command line.  For example, using
 
-    -namemapping "python2,([^/]+)\.py,java,-jar\s+([^/]+).jar" 
+    -namemapping "python2,([^/]+)\.py,java,-jar\s+([^/]+).jar"
 
   will make it so that each different python2 and java -jar invocation will be
   tracked with distinct metrics.  Processes whose remapped name is absent from
@@ -164,6 +164,8 @@ func main() {
 			"report on per-threadname metrics as well")
 		smaps = flag.Bool("gather-smaps", true,
 			"gather metrics from smaps file, which contains proportional resident memory size")
+		minimalMetrics = flag.Bool("minimal-metrics", false,
+			"enable low-overhead mode that exports only cpu, resident memory, io, and open file descriptor metrics")
 		man = flag.Bool("man", false,
 			"print manual")
 		configPath = flag.String("config.path", "",
@@ -233,13 +235,14 @@ func main() {
 
 	pc, err := collector.NewProcessCollector(
 		collector.ProcessCollectorOption{
-			ProcFSPath:  *procfsPath,
-			Children:    *children,
-			Threads:     *threads,
-			GatherSMaps: *smaps,
-			Namer:       matchnamer,
-			Recheck:     *recheck,
-			Debug:       *debug,
+			ProcFSPath:     *procfsPath,
+			Children:       *children,
+			Threads:        *threads,
+			GatherSMaps:    *smaps,
+			MinimalMetrics: *minimalMetrics,
+			Namer:          matchnamer,
+			Recheck:        *recheck,
+			Debug:          *debug,
 		},
 	)
 	if err != nil {

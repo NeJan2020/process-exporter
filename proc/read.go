@@ -122,6 +122,7 @@ type (
 		// It returns an error on complete failure.  Otherwise, it returns metrics
 		// and 0 on complete success, 1 if some (like I/O) couldn't be read.
 		GetMetrics() (Metrics, int, error)
+		GetMinimalMetrics() (Metrics, int, error)
 		GetStates() (States, error)
 		GetWchan() (string, error)
 		GetCounts() (Counts, int, error)
@@ -262,6 +263,15 @@ func (p IDInfo) GetCounts() (Counts, int, error) {
 // GetMetrics implements Proc.
 func (p IDInfo) GetMetrics() (Metrics, int, error) {
 	return p.Metrics, 0, nil
+}
+
+// GetMinimalMetrics implements Proc.
+func (p IDInfo) GetMinimalMetrics() (Metrics, int, error) {
+	return Metrics{
+		Counts:   p.Metrics.Counts,
+		Memory:   Memory{ResidentBytes: p.Metrics.Memory.ResidentBytes},
+		Filedesc: Filedesc{Open: p.Metrics.Filedesc.Open},
+	}, 0, nil
 }
 
 // GetStates implements Proc.
@@ -469,6 +479,29 @@ func (p proc) GetStates() (States, error) {
 	return s, nil
 }
 
+// GetMinimalMetrics implements Proc.
+func (p proc) GetMinimalMetrics() (Metrics, int, error) {
+	counts, softerrors, err := p.GetCounts()
+	if err != nil {
+		return Metrics{}, 0, err
+	}
+	stat, _ := p.getStat()
+	numfds, err := p.Proc.FileDescriptorsLen()
+	if err != nil {
+		numfds = -1
+		softerrors |= 1
+	}
+	return Metrics{
+		Counts: counts,
+		Memory: Memory{
+			ResidentBytes: uint64(stat.ResidentMemory()),
+		},
+		Filedesc: Filedesc{
+			Open: int64(numfds),
+		},
+	}, softerrors, nil
+}
+
 // GetMetrics returns the current metrics for the proc.  The results are
 // not cached.
 func (p proc) GetMetrics() (Metrics, int, error) {
@@ -535,11 +568,10 @@ func (p proc) GetMetrics() (Metrics, int, error) {
 }
 
 func (p proc) GetThreads() ([]Thread, error) {
-	fs, err := p.fs.threadFs(p.PID)
+	fs, err := p.fs.threadFs(p.GetPid())
 	if err != nil {
 		return nil, err
 	}
-
 	threads := []Thread{}
 	iter := fs.AllProcs()
 	for iter.Next() {
@@ -548,22 +580,18 @@ func (p proc) GetThreads() ([]Thread, error) {
 		if err != nil {
 			continue
 		}
-
 		var static Static
 		static, err = iter.GetStatic()
 		if err != nil {
 			continue
 		}
-
 		var counts Counts
 		counts, _, err = iter.GetCounts()
 		if err != nil {
 			continue
 		}
-
 		wchan, _ := iter.GetWchan()
 		states, _ := iter.GetStates()
-
 		threads = append(threads, Thread{
 			ThreadID:   ThreadID(id),
 			ThreadName: static.Name,
@@ -579,7 +607,6 @@ func (p proc) GetThreads() ([]Thread, error) {
 	if len(threads) < 2 {
 		return nil, nil
 	}
-
 	return threads, nil
 }
 
