@@ -122,6 +122,7 @@ type (
 		// It returns an error on complete failure.  Otherwise, it returns metrics
 		// and 0 on complete success, 1 if some (like I/O) couldn't be read.
 		GetMetrics() (Metrics, int, error)
+		GetMinimalMetrics() (Metrics, int, error)
 		GetStates() (States, error)
 		GetWchan() (string, error)
 		GetCounts() (Counts, int, error)
@@ -261,6 +262,9 @@ func (p IDInfo) GetCounts() (Counts, int, error) {
 
 // GetMetrics implements Proc.
 func (p IDInfo) GetMetrics() (Metrics, int, error) {
+	return p.Metrics, 0, nil
+}
+func (p IDInfo) GetMinimalMetrics() (Metrics, int, error) {
 	return p.Metrics, 0, nil
 }
 
@@ -526,6 +530,33 @@ func (p proc) GetMetrics() (Metrics, int, error) {
 		NumThreads: uint64(stat.NumThreads),
 		States:     states,
 		Wchan:      wchan,
+	}, softerrors, nil
+}
+
+func (p proc) GetMinimalMetrics() (Metrics, int, error) {
+	counts, softerrors, err := p.GetCounts()
+	if err != nil {
+		return Metrics{}, 0, err
+	}
+	stat, _ := p.getStat()
+	status, _ := p.getStatus()
+	numfds, err := p.Proc.FileDescriptorsLen()
+	if err != nil {
+		numfds = -1
+		softerrors |= 1
+	}
+	memory := Memory{
+		ResidentBytes: uint64(stat.ResidentMemory()),
+		VirtualBytes:  uint64(stat.VirtualMemory()),
+		VmSwapBytes:   uint64(status.VmSwap),
+	}
+	return Metrics{
+		Counts: counts,
+		Memory: memory,
+		Filedesc: Filedesc{
+			Open: int64(numfds),
+		},
+		NumThreads: uint64(stat.NumThreads),
 	}, softerrors, nil
 }
 

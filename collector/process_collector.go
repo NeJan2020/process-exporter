@@ -160,6 +160,7 @@ type (
 		Children          bool
 		Threads           bool
 		GatherSMaps       bool
+		MinimalMetrics    bool
 		Namer             common.MatchNamer
 		Recheck           bool
 		RecheckTimeLimit  time.Duration
@@ -172,6 +173,7 @@ type (
 		*proc.Grouper
 		threads              bool
 		smaps                bool
+		minimalMetrics       bool
 		source               proc.Source
 		scrapeErrors         int
 		scrapeProcReadErrors int
@@ -189,10 +191,11 @@ func NewProcessCollector(options ProcessCollectorOption) (*NamedProcessCollector
 	fs.GatherSMaps = options.GatherSMaps
 	p := &NamedProcessCollector{
 		scrapeChan: make(chan scrapeRequest),
-		Grouper:    proc.NewGrouper(options.Namer, options.Children, options.Threads, options.Recheck, options.RecheckTimeLimit, options.Debug, options.RemoveEmptyGroups),
+		Grouper:    proc.NewGrouper(options.Namer, options.Children, options.Threads, options.MinimalMetrics, options.Recheck, options.RecheckTimeLimit, options.Debug, options.RemoveEmptyGroups),
 		source:     fs,
 		threads:    options.Threads,
 		smaps:      options.GatherSMaps,
+		minimalMetrics: options.MinimalMetrics,
 		debug:      options.Debug,
 	}
 
@@ -214,28 +217,34 @@ func NewProcessCollector(options ProcessCollectorOption) (*NamedProcessCollector
 // Describe implements prometheus.Collector.
 func (p *NamedProcessCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- cpuSecsDesc
-	ch <- numprocsDesc
+	if !p.minimalMetrics {
+		ch <- numprocsDesc
+	}
 	ch <- readBytesDesc
 	ch <- writeBytesDesc
 	ch <- membytesDesc
 	ch <- openFDsDesc
-	ch <- worstFDRatioDesc
-	ch <- startTimeDesc
-	ch <- majorPageFaultsDesc
-	ch <- minorPageFaultsDesc
-	ch <- contextSwitchesDesc
-	ch <- numThreadsDesc
-	ch <- statesDesc
+	if !p.minimalMetrics {
+		ch <- worstFDRatioDesc
+		ch <- startTimeDesc
+		ch <- majorPageFaultsDesc
+		ch <- minorPageFaultsDesc
+		ch <- contextSwitchesDesc
+		ch <- numThreadsDesc
+		ch <- statesDesc
+	}
 	ch <- scrapeErrorsDesc
 	ch <- scrapeProcReadErrorsDesc
 	ch <- scrapePartialErrorsDesc
-	ch <- threadWchanDesc
-	ch <- threadCountDesc
-	ch <- threadCpuSecsDesc
-	ch <- threadIoBytesDesc
-	ch <- threadMajorPageFaultsDesc
-	ch <- threadMinorPageFaultsDesc
-	ch <- threadContextSwitchesDesc
+	if !p.minimalMetrics {
+		ch <- threadWchanDesc
+		ch <- threadCountDesc
+		ch <- threadCpuSecsDesc
+		ch <- threadIoBytesDesc
+		ch <- threadMajorPageFaultsDesc
+		ch <- threadMinorPageFaultsDesc
+		ch <- threadContextSwitchesDesc
+	}
 }
 
 // Collect implements prometheus.Collector.
@@ -261,6 +270,21 @@ func (p *NamedProcessCollector) scrape(ch chan<- prometheus.Metric) {
 		log.Printf("error reading procs: %v", err)
 	} else {
 		for gname, gcounts := range groups {
+			if p.minimalMetrics {
+				ch <- prometheus.MustNewConstMetric(cpuSecsDesc,
+					prometheus.CounterValue, gcounts.CPUUserTime, gname, "user")
+				ch <- prometheus.MustNewConstMetric(cpuSecsDesc,
+					prometheus.CounterValue, gcounts.CPUSystemTime, gname, "system")
+				ch <- prometheus.MustNewConstMetric(membytesDesc,
+					prometheus.GaugeValue, float64(gcounts.Memory.ResidentBytes), gname, "resident")
+				ch <- prometheus.MustNewConstMetric(readBytesDesc,
+					prometheus.CounterValue, float64(gcounts.ReadBytes), gname)
+				ch <- prometheus.MustNewConstMetric(writeBytesDesc,
+					prometheus.CounterValue, float64(gcounts.WriteBytes), gname)
+				ch <- prometheus.MustNewConstMetric(openFDsDesc,
+					prometheus.GaugeValue, float64(gcounts.OpenFDs), gname)
+				continue
+			}
 			ch <- prometheus.MustNewConstMetric(numprocsDesc,
 				prometheus.GaugeValue, float64(gcounts.Procs), gname)
 			ch <- prometheus.MustNewConstMetric(membytesDesc,

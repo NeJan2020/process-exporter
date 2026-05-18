@@ -168,6 +168,8 @@ func main() {
 			"report on per-threadname metrics as well")
 		smaps = flag.Bool("gather-smaps", true,
 			"gather metrics from smaps file, which contains proportional resident memory size")
+		minimalMetrics = flag.Bool("minimal-metrics", false,
+			"collect and export only low-overhead cpu, memory, io, and open file descriptor metrics")
 		man = flag.Bool("man", false,
 			"print manual")
 		configPath = flag.String("config.path", "",
@@ -241,6 +243,10 @@ func main() {
 	if *recheckTimeLimit != 0 {
 		*recheck = true
 	}
+	if *minimalMetrics {
+		*threads = false
+		*smaps = false
+	}
 
 	pc, err := collector.NewProcessCollector(
 		collector.ProcessCollectorOption{
@@ -248,6 +254,7 @@ func main() {
 			Children:          *children,
 			Threads:           *threads,
 			GatherSMaps:       *smaps,
+			MinimalMetrics:    *minimalMetrics,
 			Namer:             matchnamer,
 			Recheck:           *recheck,
 			RecheckTimeLimit:  *recheckTimeLimit,

@@ -33,6 +33,7 @@ type (
 		recheck bool
 		// limit rechecks to this much time
 		recheckTimeLimit time.Duration
+		minimalMetrics   bool
 		username         map[int]string
 		debug            bool
 	}
@@ -141,7 +142,7 @@ func (tp *trackedProc) getUpdate() Update {
 }
 
 // NewTracker creates a Tracker.
-func NewTracker(namer common.MatchNamer, trackChildren bool, recheck bool, recheckTimeLimit time.Duration, debug bool) *Tracker {
+func NewTracker(namer common.MatchNamer, trackChildren bool, minimalMetrics bool, recheck bool, recheckTimeLimit time.Duration, debug bool) *Tracker {
 	return &Tracker{
 		namer:            namer,
 		tracked:          make(map[ID]*trackedProc),
@@ -149,6 +150,7 @@ func NewTracker(namer common.MatchNamer, trackChildren bool, recheck bool, reche
 		trackChildren:    trackChildren,
 		recheck:          recheck,
 		recheckTimeLimit: recheckTimeLimit,
+		minimalMetrics:   minimalMetrics,
 		username:         make(map[int]string),
 		debug:            debug,
 	}
@@ -233,36 +235,40 @@ func (t *Tracker) handleProc(proc Proc, updateTime time.Time) (*IDInfo, CollectE
 		}
 		return nil, cerrs
 	}
-
 	// Do nothing if we're ignoring this proc.
 	last, known := t.tracked[procID]
 	if known && last == nil {
 		return nil, cerrs
 	}
-
-	metrics, softerrors, err := proc.GetMetrics()
+	var (
+		metrics    Metrics
+		softerrors int
+	)
+	if t.minimalMetrics {
+		metrics, softerrors, err = proc.GetMinimalMetrics()
+	} else {
+		metrics, softerrors, err = proc.GetMetrics()
+	}
 	if err != nil {
 		if t.debug {
 			log.Printf("error reading metrics for %+v: %v", procID, err)
 		}
-		// This usually happens due to the proc having exited, i.e.
-		// we lost the race.  We don't count that as an error.
 		if err != ErrProcNotExist {
 			cerrs.Read++
 		}
 		return nil, cerrs
 	}
-
 	var threads []Thread
-	threads, err = proc.GetThreads()
-	if err != nil {
-		if t.debug {
-			log.Printf("can't read thread metrics for %+v: %v", procID, err)
+	if !t.minimalMetrics {
+		threads, err = proc.GetThreads()
+		if err != nil {
+			if t.debug {
+				log.Printf("can't read thread metrics for %+v: %v", procID, err)
+			}
+			softerrors |= 1
 		}
-		softerrors |= 1
 	}
 	cerrs.Partial += softerrors
-
 	if len(threads) > 0 {
 		metrics.Counts.CtxSwitchNonvoluntary, metrics.Counts.CtxSwitchVoluntary = 0, 0
 		for _, thread := range threads {
@@ -271,7 +277,6 @@ func (t *Tracker) handleProc(proc Proc, updateTime time.Time) (*IDInfo, CollectE
 			metrics.States.Add(thread.States)
 		}
 	}
-
 	var newProc *IDInfo
 	if known {
 		last.update(metrics, updateTime, &cerrs, threads)
@@ -287,10 +292,6 @@ func (t *Tracker) handleProc(proc Proc, updateTime time.Time) (*IDInfo, CollectE
 		if t.debug {
 			log.Printf("found new proc: %s", newProc)
 		}
-
-		// Is this a new process with the same pid as one we already know?
-		// Then delete it from the known map, otherwise the cleanup in Update()
-		// will remove the ProcIds entry we're creating here.
 		if oldProcID, ok := t.procIds[procID.Pid]; ok {
 			delete(t.tracked, oldProcID)
 		}
