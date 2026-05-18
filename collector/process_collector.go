@@ -190,13 +190,13 @@ func NewProcessCollector(options ProcessCollectorOption) (*NamedProcessCollector
 
 	fs.GatherSMaps = options.GatherSMaps
 	p := &NamedProcessCollector{
-		scrapeChan: make(chan scrapeRequest),
-		Grouper:    proc.NewGrouper(options.Namer, options.Children, options.Threads, options.MinimalMetrics, options.Recheck, options.RecheckTimeLimit, options.Debug, options.RemoveEmptyGroups),
-		source:     fs,
-		threads:    options.Threads,
-		smaps:      options.GatherSMaps,
+		scrapeChan:     make(chan scrapeRequest),
+		Grouper:        proc.NewGrouper(options.Namer, options.Children, options.Threads, options.MinimalMetrics, options.Recheck, options.RecheckTimeLimit, options.Debug, options.RemoveEmptyGroups),
+		source:         fs,
+		threads:        options.Threads,
+		smaps:          options.GatherSMaps,
 		minimalMetrics: options.MinimalMetrics,
-		debug:      options.Debug,
+		debug:          options.Debug,
 	}
 
 	colErrs, _, err := p.Update(p.source.AllProcs())
