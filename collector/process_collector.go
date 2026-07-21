@@ -155,14 +155,15 @@ type (
 	}
 
 	ProcessCollectorOption struct {
-		ProcFSPath     string
-		Children       bool
-		Threads        bool
-		GatherSMaps    bool
-		MinimalMetrics bool
-		Namer          common.MatchNamer
-		Recheck        bool
-		Debug          bool
+		ProcFSPath        string
+		Children          bool
+		Threads           bool
+		GatherSMaps       bool
+		MinimalMetrics    bool
+		Namer             common.MatchNamer
+		Recheck           bool
+		Debug             bool
+		RemoveEmptyGroups bool
 	}
 
 	NamedProcessCollector struct {
@@ -187,7 +188,7 @@ func NewProcessCollector(options ProcessCollectorOption) (*NamedProcessCollector
 	fs.GatherSMaps = options.GatherSMaps && !options.MinimalMetrics
 	p := &NamedProcessCollector{
 		scrapeChan:     make(chan scrapeRequest),
-		Grouper:        proc.NewGrouper(options.Namer, options.Children, options.Threads && !options.MinimalMetrics, options.Recheck, options.MinimalMetrics, options.Debug),
+		Grouper:        proc.NewGrouper(options.Namer, options.Children, options.Threads && !options.MinimalMetrics, options.Recheck, options.MinimalMetrics, options.Debug, options.RemoveEmptyGroups),
 		source:         fs,
 		threads:        options.Threads && !options.MinimalMetrics,
 		smaps:          options.GatherSMaps && !options.MinimalMetrics,
